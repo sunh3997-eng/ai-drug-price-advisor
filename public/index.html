@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>AI 药品比价管家</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+    .tab-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+    .tab-inactive { color: #6b7280; }
+    .fade-in { animation: fadeIn 0.3s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .price-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .price-card { transition: all 0.2s; }
+    .cheapest { border-left: 3px solid #10b981; background: #ecfdf5; }
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen max-w-md mx-auto">
+
+  <!-- Header -->
+  <header class="bg-blue-600 text-white p-4 text-center sticky top-0 z-50 shadow-md">
+    <h1 class="text-lg font-bold">💊 AI 药品比价管家</h1>
+    <p class="text-xs text-blue-200 mt-1">拍处方·比价格·管用药</p>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="flex bg-white shadow-sm sticky top-[72px] z-40">
+    <button onclick="switchTab('scan')" id="tab-scan" class="flex-1 py-3 text-sm font-medium tab-active">📷 处方识别</button>
+    <button onclick="switchTab('compare')" id="tab-compare" class="flex-1 py-3 text-sm font-medium tab-inactive">💰 药品比价</button>
+    <button onclick="switchTab('remind')" id="tab-remind" class="flex-1 py-3 text-sm font-medium tab-inactive">⏰ 用药提醒</button>
+  </nav>
+
+  <!-- Tab: 处方识别 -->
+  <div id="page-scan" class="p-4 fade-in">
+    <div class="bg-white rounded-xl p-6 shadow-sm text-center">
+      <div class="w-24 h-24 mx-auto bg-blue-50 rounded-full flex items-center justify-center mb-4">
+        <span class="text-4xl">📋</span>
+      </div>
+      <h2 class="text-lg font-bold mb-2">拍照识别处方单</h2>
+      <p class="text-gray-500 text-sm mb-6">上传处方单照片，AI自动识别药品信息</p>
+      
+      <input type="file" id="photoInput" accept="image/*" capture="camera" class="hidden" onchange="handlePhoto(this)">
+      <button onclick="document.getElementById('photoInput').click()" 
+              class="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition mb-3">
+        📷 拍照 / 选择图片
+      </button>
+      <button onclick="mockScan()" class="w-full bg-gray-100 text-gray-600 py-3 rounded-lg font-medium hover:bg-gray-200 transition">
+        🧪 演示模式（Mock数据）
+      </button>
+    </div>
+
+    <!-- Scan Results -->
+    <div id="scanResults" class="mt-4 hidden">
+      <h3 class="font-bold text-gray-800 mb-3">🔍 识别结果</h3>
+      <div id="drugList"></div>
+      <button onclick="compareScanned()" id="compareBtn"
+              class="w-full mt-4 bg-green-600 text-white py-3 rounded-lg font-medium hover:bg-green-700 transition">
+        💰 一键比价全部药品
+      </button>
+    </div>
+  </div>
+
+  <!-- Tab: 药品比价 -->
+  <div id="page-compare" class="p-4 hidden fade-in">
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      <h3 class="font-bold mb-3">🔎 手动搜索比价</h3>
+      <div class="flex gap-2">
+        <input id="searchDrug" type="text" placeholder="输入药品名称，如：阿莫西林胶囊" 
+               class="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+        <button onclick="searchDrug()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700">搜索</button>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <span class="text-xs text-gray-400">热门：</span>
+        <button onclick="quickSearch('阿莫西林胶囊')" class="text-xs bg-gray-100 px-2 py-1 rounded-full hover:bg-gray-200">阿莫西林胶囊</button>
+        <button onclick="quickSearch('布洛芬缓释胶囊')" class="text-xs bg-gray-100 px-2 py-1 rounded-full hover:bg-gray-200">布洛芬缓释胶囊</button>
+        <button onclick="quickSearch('奥美拉唑肠溶胶囊')" class="text-xs bg-gray-100 px-2 py-1 rounded-full hover:bg-gray-200">奥美拉唑肠溶胶囊</button>
+      </div>
+    </div>
+    <div id="compareResults"></div>
+  </div>
+
+  <!-- Tab: 用药提醒 -->
+  <div id="page-remind" class="p-4 hidden fade-in">
+    <!-- Add Reminder Form -->
+    <div class="bg-white rounded-xl p-4 shadow-sm mb-4">
+      <h3 class="font-bold mb-3">➕ 添加用药提醒</h3>
+      <div class="space-y-3">
+        <input id="r-drug" type="text" placeholder="药品名称" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+        <input id="r-dosage" type="text" placeholder="用量（如：每次1粒）" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+        <select id="r-frequency" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+          <option value="每日1次">每日1次</option>
+          <option value="每日2次">每日2次</option>
+          <option value="每日3次" selected>每日3次</option>
+          <option value="需要时服用">需要时服用</option>
+        </select>
+        <input id="r-time" type="time" value="08:00" class="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300">
+        <button onclick="addReminder()" class="w-full bg-blue-600 text-white py-2.5 rounded-lg font-medium hover:bg-blue-700 transition">
+          添加提醒
+        </button>
+      </div>
+    </div>
+
+    <!-- Reminder List -->
+    <h3 class="font-bold text-gray-800 mb-3">📋 我的提醒</h3>
+    <div id="reminderList">
+      <p class="text-gray-400 text-sm text-center py-8">暂无用药提醒</p>
+    </div>
+  </div>
+
+  <!-- Loading Overlay -->
+  <div id="loading" class="hidden fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+    <div class="bg-white rounded-xl p-6 text-center shadow-lg">
+      <div class="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-3"></div>
+      <p class="text-sm text-gray-600" id="loadingText">处理中...</p>
+    </div>
+  </div>
+
+<script>
+  const API = '';
+  let scannedDrugs = [];
+
+  // Tab switching
+  function switchTab(tab) {
+    ['scan', 'compare', 'remind'].forEach(t => {
+      document.getElementById(`page-${t}`).classList.toggle('hidden', t !== tab);
+      document.getElementById(`tab-${t}`).className = `flex-1 py-3 text-sm font-medium ${t === tab ? 'tab-active' : 'tab-inactive'}`;
+    });
+    if (tab === 'remind') loadReminders();
+  }
+
+  function showLoading(text = '处理中...') {
+    document.getElementById('loadingText').textContent = text;
+    document.getElementById('loading').classList.remove('hidden');
+  }
+  function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+  // === 处方识别 ===
+  function handlePhoto(input) {
+    if (!input.files[0]) return;
+    const reader = new FileReader();
+    reader.onload = () => doScan(reader.result);
+    reader.readAsDataURL(input.files[0]);
+  }
+
+  function mockScan() { doScan('mock_base64_data'); }
+
+  async function doScan(imageData) {
+    showLoading('AI 正在识别处方单...');
+    try {
+      const res = await fetch(`${API}/api/ocr/prescription`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        scannedDrugs = data.data.drugs;
+        renderDrugList(data.data);
+      } else {
+        alert('识别失败：' + data.error);
+      }
+    } catch (e) { alert('网络错误：' + e.message); }
+    hideLoading();
+  }
+
+  function renderDrugList(data) {
+    const container = document.getElementById('drugList');
+    container.innerHTML = data.drugs.map((d, i) => `
+      <div class="bg-white rounded-lg p-4 shadow-sm mb-3 fade-in" style="animation-delay: ${i * 0.1}s">
+        <div class="flex justify-between items-start">
+          <div>
+            <h4 class="font-bold text-gray-800">${d.name}</h4>
+            <p class="text-xs text-gray-500 mt-1">${d.spec}</p>
+            <p class="text-xs text-blue-600 mt-1">${d.dosage}</p>
+          </div>
+          <span class="text-xs bg-blue-50 text-blue-600 px-2 py-1 rounded-full">${d.category}</span>
+        </div>
+      </div>
+    `).join('');
+    document.getElementById('scanResults').classList.remove('hidden');
+    const conf = document.createElement('p');
+    conf.className = 'text-xs text-gray-400 text-right mt-1';
+    conf.textContent = `识别置信度: ${(data.confidence * 100).toFixed(0)}%`;
+    container.appendChild(conf);
+  }
+
+  function compareScanned() {
+    switchTab('compare');
+    doCompare(scannedDrugs.map(d => d.name));
+  }
+
+  // === 比价 ===
+  function quickSearch(name) {
+    document.getElementById('searchDrug').value = name;
+    searchDrug();
+  }
+
+  function searchDrug() {
+    const name = document.getElementById('searchDrug').value.trim();
+    if (!name) return alert('请输入药品名称');
+    doCompare([name]);
+  }
+
+  async function doCompare(drugNames) {
+    showLoading('正在比价...');
+    try {
+      const res = await fetch(`${API}/api/compare`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drugs: drugNames }),
+      });
+      const data = await res.json();
+      if (data.success) renderCompareResults(data.data);
+    } catch (e) { alert('网络错误：' + e.message); }
+    hideLoading();
+  }
+
+  function renderCompareResults(data) {
+    const container = document.getElementById('compareResults');
+    
+    // Summary
+    let html = `
+      <div class="bg-green-50 border border-green-200 rounded-xl p-4 mb-4 fade-in">
+        <h3 class="font-bold text-green-800 mb-2">📊 比价总结</h3>
+        <div class="grid grid-cols-3 gap-2 text-center">
+          <div><p class="text-xs text-gray-500">查询药品</p><p class="font-bold text-lg">${data.summary.total_drugs}</p></div>
+          <div><p class="text-xs text-gray-500">最低总价</p><p class="font-bold text-lg text-green-600">¥${data.summary.total_lowest}</p></div>
+          <div><p class="text-xs text-gray-500">最多省</p><p class="font-bold text-lg text-red-500">¥${data.summary.max_savings}</p></div>
+        </div>
+      </div>
+    `;
+
+    // Each drug
+    data.drugs.forEach((drug, i) => {
+      if (!drug.found) {
+        html += `<div class="bg-white rounded-xl p-4 shadow-sm mb-3"><p class="text-gray-400">${drug.drug_name}: ${drug.recommendation}</p></div>`;
+        return;
+      }
+
+      html += `<div class="bg-white rounded-xl p-4 shadow-sm mb-3 fade-in" style="animation-delay: ${i * 0.15}s">
+        <h4 class="font-bold text-gray-800 mb-3">${drug.drug_name}</h4>`;
+      
+      const cheapestPrice = drug.lowest_price;
+      drug.platforms.forEach(p => {
+        const isCheapest = p.price === cheapestPrice && p.stock;
+        html += `
+          <div class="price-card flex justify-between items-center p-3 rounded-lg mb-2 ${isCheapest ? 'cheapest' : 'bg-gray-50'}">
+            <div>
+              <p class="font-medium text-sm">${p.platform}</p>
+              <p class="text-xs text-gray-500">${p.shop} · ${p.delivery}</p>
+            </div>
+            <div class="text-right">
+              <p class="font-bold ${isCheapest ? 'text-green-600' : 'text-gray-800'}">¥${p.price.toFixed(2)}</p>
+              ${!p.stock ? '<p class="text-xs text-red-400">缺货</p>' : ''}
+              ${isCheapest ? '<p class="text-xs text-green-600">✓ 最低价</p>' : ''}
+            </div>
+          </div>
+        `;
+      });
+
+      html += `<p class="text-xs text-blue-600 mt-2">💡 ${drug.recommendation}</p></div>`;
+    });
+
+    container.innerHTML = html;
+  }
+
+  // === 用药提醒 ===
+  async function loadReminders() {
+    try {
+      const res = await fetch(`${API}/api/reminders`);
+      const data = await res.json();
+      if (data.success) renderReminders(data.data);
+    } catch (e) { console.error(e); }
+  }
+
+  function renderReminders(reminders) {
+    const container = document.getElementById('reminderList');
+    if (!reminders.length) {
+      container.innerHTML = '<p class="text-gray-400 text-sm text-center py-8">暂无用药提醒</p>';
+      return;
+    }
+
+    container.innerHTML = reminders.map(r => `
+      <div class="bg-white rounded-lg p-4 shadow-sm mb-3 flex justify-between items-center fade-in">
+        <div>
+          <h4 class="font-bold text-gray-800">${r.drug_name}</h4>
+          <p class="text-xs text-gray-500">${r.dosage} · ${r.frequency}</p>
+          <p class="text-xs text-blue-600 mt-1">⏰ ${r.remind_time}</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="toggleReminder(${r.id}, ${r.enabled ? 0 : 1})" 
+                  class="text-sm px-3 py-1 rounded-full ${r.enabled ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}">
+            ${r.enabled ? '已开启' : '已关闭'}
+          </button>
+          <button onclick="deleteReminder(${r.id})" class="text-sm px-3 py-1 rounded-full bg-red-50 text-red-500 hover:bg-red-100">删除</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function addReminder() {
+    const drug_name = document.getElementById('r-drug').value.trim();
+    const dosage = document.getElementById('r-dosage').value.trim();
+    const frequency = document.getElementById('r-frequency').value;
+    const remind_time = document.getElementById('r-time').value;
+    
+    if (!drug_name || !dosage) return alert('请填写药品名称和用量');
+
+    try {
+      await fetch(`${API}/api/reminders`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ drug_name, dosage, frequency, remind_time }),
+      });
+      document.getElementById('r-drug').value = '';
+      document.getElementById('r-dosage').value = '';
+      loadReminders();
+    } catch (e) { alert('添加失败：' + e.message); }
+  }
+
+  async function toggleReminder(id, enabled) {
+    try {
+      await fetch(`${API}/api/reminders/${id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      loadReminders();
+    } catch (e) { console.error(e); }
+  }
+
+  async function deleteReminder(id) {
+    if (!confirm('确定删除？')) return;
+    try {
+      await fetch(`${API}/api/reminders/${id}`, { method: 'DELETE' });
+      loadReminders();
+    } catch (e) { console.error(e); }
+  }
+</script>
+</body>
+</html>
